@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurora"
+version = "0.1.0"
+description = "Colab-first generative media: Wan text/image-to-video and SDXL/Flux image generation."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Subash" }]
+requires-python = ">=3.10"
+# Heavy deps (torch, diffusers, ...) live in requirements.txt so Colab's preinstalled torch is reused.
+dependencies = ["requests", "tqdm", "Pillow"]
+
+[project.optional-dependencies]
+colab = [
+    "diffusers>=0.35.1",
+    "transformers>=4.55.0",
+    "accelerate>=1.10.0",
+    "peft>=0.17.0",
+    "safetensors>=0.4.5",
+    "huggingface_hub>=0.34.0",
+    "bitsandbytes>=0.46.1",
+    "ftfy",
+    "sentencepiece",
+    "protobuf",
+    "imageio>=2.34",
+    "imageio-ffmpeg>=0.5.1",
+    "psutil",
+]
+dev = ["pytest", "ruff", "nbformat"]
+
+[project.urls]
+Homepage = "https://github.com/subash1327/aurora"
+
+[tool.setuptools]
+packages = ["aurora"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B905"]
+
+[tool.ruff.lint.per-file-ignores]
+# Colab form cells: #@param assignments precede imports; globals persist across cells.
+"notebooks/*.ipynb" = ["E402", "F821", "I001"]

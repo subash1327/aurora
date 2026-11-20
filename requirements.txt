@@ -1,0 +1,18 @@
+# Aurora runtime dependencies (Colab already ships torch/torchvision with CUDA; keep them).
+# torch>=2.4  (preinstalled on Colab)
+diffusers>=0.35.1        # Wan 2.2 (TI2V-5B, A14B MoE) + PipelineQuantizationConfig
+transformers>=4.55.0     # UMT5 / CLIP encoders, bitsandbytes integration
+accelerate>=1.10.0       # cpu offload hooks
+peft>=0.17.0             # LoRA loading
+safetensors>=0.4.5
+huggingface_hub>=0.34.0
+bitsandbytes>=0.46.1     # 8-bit / 4-bit (NF4) quantization on T4/L4
+ftfy                     # Wan prompt cleaning
+sentencepiece            # UMT5 / T5 tokenizers
+protobuf
+imageio>=2.34
+imageio-ffmpeg>=0.5.1    # MP4 export
+psutil
+requests
+tqdm
+Pillow
