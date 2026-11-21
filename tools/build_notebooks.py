@@ -62,7 +62,7 @@ Text-to-video and image-to-video with [Wan 2.1 / 2.2](https://huggingface.co/Wan
 | Wan2.1-T2V-14B, Wan2.1-I2V-14B-480P/720P | text / image → video | **A100** |
 | Wan2.2-T2V-A14B, Wan2.2-I2V-A14B (MoE) | text / image → video | A100 80 GB (40 GB with offload) |
 
-**Steps:** run 1 → 2 → 3 (load model) → 4 (generate). Re-run 4 as often as you like.
+**Steps:** run 1 → 2 → 3 (load model) → 3b (i2v: upload a start image from your computer, optional) → 4 (generate). Re-run 4 as often as you like.
 
 > **Content policy:** no sexual content involving minors (prompts with child/teen terms are refused automatically) and no sexual or non-consensual content of real, identifiable people. See the README."""),
     new_code_cell(INSTALL),
@@ -92,6 +92,16 @@ if globals().get("GEN") is None or globals().get("_GEN_KEY") != _key:
 s = GEN.spec
 print(f"Ready: {{s.key}} [{{GEN.mode}}] defaults {{s.height}}x{{s.width}}, {{s.num_frames}} frames @ {{s.fps}} fps, "
       f"{{s.steps}} steps, guidance {{s.guidance}}. {{s.notes}}")"""),
+    new_code_cell("""#@title 3b. (i2v only) Upload a start image from your computer
+UPLOAD_METHOD = "file picker"  #@param ["file picker", "drag & drop widget"]
+#@markdown `file picker` opens your computer's file dialog. `drag & drop widget` shows a drop zone; drop the file, then run step 4.
+CLEAR_PREVIOUS = True  #@param {type:"boolean"}
+#@markdown An uploaded image takes precedence over `INPUT_IMAGE` in step 4 (untick `USE_UPLOADED` there to ignore it).
+from aurora.inputs import upload
+
+if CLEAR_PREVIOUS and globals().get("IMAGE_UPLOADS") is not None:
+    IMAGE_UPLOADS.clear()
+IMAGE_UPLOADS = upload("image", UPLOAD_METHOD, uploader=globals().get("IMAGE_UPLOADS"))"""),
     new_code_cell("""#@title 4. Generate a video
 PROMPT = "A cinematic drone shot gliding over snowy mountains at sunrise, golden light, volumetric fog, ultra detailed"  #@param {type:"string"}
 NEGATIVE_PROMPT = "default"  #@param {type:"string"}
@@ -106,7 +116,8 @@ GUIDANCE = 5.0  #@param {type:"slider", min:1.0, max:10.0, step:0.5}
 SEED = -1  #@param {type:"integer"}
 #@markdown `-1` = random seed.
 INPUT_IMAGE = ""  #@param {type:"string"}
-#@markdown **i2v only:** image URL or a path in `/content`. Leave blank to upload a file.
+#@markdown **i2v only:** image URL, `/content/...` path or Drive path (`/content/drive/MyDrive/...`). An image uploaded in step 3b wins; if nothing is set, a file picker opens.
+USE_UPLOADED = True  #@param {type:"boolean"}
 SAVE_TO_DRIVE = False  #@param {type:"boolean"}
 
 import time
@@ -122,13 +133,11 @@ if RESOLUTION != "model default":
 
 image = None
 if GEN.mode == "i2v":
-    if INPUT_IMAGE.strip():
-        image = INPUT_IMAGE.strip()
-    else:
-        from google.colab import files
-        from PIL import Image
-        up = files.upload()
-        image = Image.open(next(iter(up)))
+    from aurora.inputs import resolve_image
+
+    image = resolve_image(INPUT_IMAGE, uploader=globals().get("IMAGE_UPLOADS") if USE_UPLOADED else None)
+    if image is None:
+        raise ValueError("Image-to-video needs a start image: upload one in step 3b or set INPUT_IMAGE.")
 
 t0 = time.time()
 frames, params = GEN.generate(PROMPT, negative_prompt=neg, image=image, height=h, width=w,
@@ -180,7 +189,7 @@ An optional **Flux** section works on L4/A100.
 
 **Runs on:** SDXL on a free **T4** (fp16, fp16-safe VAE). Flux on **L4/A100** (4-bit on ≤24 GB).
 
-**Steps:** 1 → 2 → 3 (load model) → 4 (optional LoRAs) → 5 (txt2img) / 6 (img2img).
+**Steps:** 1 → 2 → 2b (optional: upload LoRA/checkpoint files from your computer) → 3 (load model) → 4 (optional LoRAs) → 5 (txt2img) / 6a (upload an init image, optional) → 6 (img2img).
 
 > ### ⚠️ Content policy (enforced)
 > * **Sexual or suggestive content involving minors is prohibited.** Prompts, checkpoint names and LoRA names that contain minor/child-related terms (child, kid, teen, underage, loli, schoolgirl, ages under 18, …) are refused before generation. Rephrase if you hit a false positive.
@@ -192,10 +201,21 @@ An optional **Flux** section works on L4/A100.
         + """
 #@markdown For Civitai downloads add a `CIVITAI_TOKEN` secret too (Civitai > Account settings > API keys)."""
     ),
+    new_code_cell("""#@title 2b. (Optional) Upload LoRA / checkpoint files from your computer
+WHAT = "LoRA"  #@param ["LoRA", "checkpoint"]
+UPLOAD_METHOD = "file picker"  #@param ["file picker", "drag & drop widget"]
+#@markdown Then type `uploaded` (latest file) or `uploaded:2` (2nd file) in `CUSTOM_SOURCE` (step 3, checkpoints) or `LORA_1` / `LORA_2` (step 4).
+#@markdown Files are saved under `/content/uploads/`. A 6 GB checkpoint uploads slowly through the browser; a Google Drive path (`/content/drive/MyDrive/...`) is faster.
+from aurora.inputs import upload
+
+if WHAT == "LoRA":
+    LORA_UPLOADS = upload("lora", UPLOAD_METHOD, uploader=globals().get("LORA_UPLOADS"))
+else:
+    CKPT_UPLOADS = upload("checkpoint", UPLOAD_METHOD, uploader=globals().get("CKPT_UPLOADS"))"""),
     new_code_cell(f"""#@title 3. Load a model
 MODEL = "Juggernaut XL v9 (photoreal)"  #@param {json.dumps(IMAGE_MODELS)}
 CUSTOM_SOURCE = ""  #@param {{type:"string"}}
-#@markdown Custom: HF repo id (`owner/name`, diffusers format), HF file URL (`https://huggingface.co/.../blob/main/x.safetensors`), Civitai download URL (`https://civitai.com/api/download/models/<versionId>`) or a local `.safetensors` path.
+#@markdown Custom: HF repo id (`owner/name`, diffusers format), HF file URL (`https://huggingface.co/.../blob/main/x.safetensors`), Civitai download URL (`https://civitai.com/api/download/models/<versionId>`), a local/Drive `.safetensors` path, or `uploaded` (file from step 2b).
 CUSTOM_FAMILY = "sdxl"  #@param ["sdxl", "flux"]
 SCHEDULER = "model default"  #@param {json.dumps(SCHEDULERS)}
 DTYPE = "auto"  #@param ["auto", "fp16", "bf16", "fp32"]
@@ -203,8 +223,9 @@ OFFLOAD = "auto"  #@param ["auto", "none", "model", "sequential"]
 
 from aurora.device import free_memory
 from aurora.image import IMAGE_MODELS, ImageGenerator, set_scheduler
+from aurora.inputs import resolve_source
 
-_src = CUSTOM_SOURCE.strip() if MODEL.startswith("Custom") else MODEL
+_src = resolve_source(CUSTOM_SOURCE, globals().get("CKPT_UPLOADS"), "checkpoint") if MODEL.startswith("Custom") else MODEL
 if not _src:
     raise ValueError("Set CUSTOM_SOURCE or pick a model from the list.")
 _key = (_src, CUSTOM_FAMILY, DTYPE, OFFLOAD)
@@ -222,7 +243,7 @@ elif SCHEDULER != "model default" and IMG.family == "sdxl":
 spec = IMAGE_MODELS.get(_src)
 print(f"Ready: {{_src}} ({{IMG.family}}, {{IMG.dtype}}, offload={{IMG.offload}})" + (f" | {{spec.notes}} | default {{spec.width}}x{{spec.height}}, {{spec.steps}} steps, CFG {{spec.guidance}}" if spec else ""))"""),
     new_code_cell("""#@title 4. (Optional) LoRAs
-#@markdown HF repo id, HF file URL, Civitai download URL or local path. Leave blank to skip. Re-running replaces previously loaded LoRAs.
+#@markdown HF repo id, HF file URL, Civitai download URL, local/Drive path, or `uploaded` / `uploaded:2` (files from step 2b). Leave blank to skip. Re-running replaces previously loaded LoRAs.
 LORA_1 = ""  #@param {type:"string"}
 LORA_1_WEIGHT = 0.8  #@param {type:"slider", min:-1.0, max:2.0, step:0.05}
 LORA_1_FILE = ""  #@param {type:"string"}
@@ -231,10 +252,13 @@ LORA_2 = ""  #@param {type:"string"}
 LORA_2_WEIGHT = 0.8  #@param {type:"slider", min:-1.0, max:2.0, step:0.05}
 LORA_2_FILE = ""  #@param {type:"string"}
 
+from aurora.inputs import resolve_source
+
 IMG.clear_loras()
 for src, wt, fn in ((LORA_1, LORA_1_WEIGHT, LORA_1_FILE), (LORA_2, LORA_2_WEIGHT, LORA_2_FILE)):
-    if src.strip():
-        IMG.add_lora(src.strip(), weight=wt, weight_name=fn.strip() or None)
+    src = resolve_source(src, globals().get("LORA_UPLOADS"), "lora")
+    if src:
+        IMG.add_lora(src, weight=wt, weight_name=fn.strip() or None)
 IMG._img2img = None
 print("Active LoRAs:", IMG.loras or "none")"""),
     new_code_cell("""#@title 5. Text → image
@@ -277,9 +301,20 @@ for p in paths:
     if SAVE_TO_DRIVE:
         copy_to_drive(p, "Aurora/images")
 show_images(images)"""),
+    new_code_cell("""#@title 6a. (Optional) Upload an init image from your computer
+UPLOAD_METHOD = "file picker"  #@param ["file picker", "drag & drop widget"]
+#@markdown `file picker` opens your computer's file dialog. `drag & drop widget` shows a drop zone; drop the file, then run step 6.
+CLEAR_PREVIOUS = True  #@param {type:"boolean"}
+#@markdown An uploaded image takes precedence over `INIT_IMAGE` in step 6 (untick `USE_UPLOADED` there to ignore it).
+from aurora.inputs import upload
+
+if CLEAR_PREVIOUS and globals().get("IMAGE_UPLOADS") is not None:
+    IMAGE_UPLOADS.clear()
+IMAGE_UPLOADS = upload("image", UPLOAD_METHOD, uploader=globals().get("IMAGE_UPLOADS"))"""),
     new_code_cell("""#@title 6. Image → image
 INIT_IMAGE = ""  #@param {type:"string"}
-#@markdown URL or `/content/...` path. Blank = upload a file. Type `last` to reuse the first image from step 5.
+#@markdown URL, `/content/...` path, Drive path (`/content/drive/MyDrive/...`) or `last` (first image from step 5). An image uploaded in step 6a wins; if nothing is set, a file picker opens.
+USE_UPLOADED = True  #@param {type:"boolean"}
 PROMPT = "same woman, oil painting style, dramatic lighting"  #@param {type:"string"}
 NEGATIVE_PROMPT = "default"  #@param {type:"string"}
 ADULT_SAFETY_NEGATIVES = True  #@param {type:"boolean"}
@@ -299,14 +334,12 @@ from aurora.image import DEFAULT_SDXL_NEGATIVE
 from aurora.outputs import copy_to_drive, save_image, show_images
 from aurora.safety import ADULT_NEGATIVE_PROMPT
 
-if INIT_IMAGE.strip() == "last":
-    init = images[0]
-elif INIT_IMAGE.strip():
-    init = INIT_IMAGE.strip()
-else:
-    from google.colab import files
-    up = files.upload()
-    init = Image.open(next(iter(up)))
+from aurora.inputs import resolve_image
+
+init = resolve_image(INIT_IMAGE, uploader=globals().get("IMAGE_UPLOADS") if USE_UPLOADED else None,
+                     last=globals().get("images", [None])[0])
+if init is None:
+    raise ValueError("img2img needs an init image: upload one in step 6a or set INIT_IMAGE.")
 if isinstance(init, Image.Image) and not (WIDTH and HEIGHT):
     # keep the input's aspect ratio at ~1 MP
     r = (1024 * 1024 / (init.width * init.height)) ** 0.5
